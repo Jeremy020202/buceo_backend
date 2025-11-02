@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 from app.database import db
 from app.models import Equipo, Mantenimiento
 from datetime import datetime
+from dateutil.relativedelta import relativedelta 
+
 
 routes = Blueprint('routes', __name__)
 
@@ -9,37 +11,56 @@ routes = Blueprint('routes', __name__)
 # 🟢 EQUIPOS
 # ============================================================
 
-# Crear nuevo equipo
+from dateutil.relativedelta import relativedelta  #  para sumar meses fácilmente
+
 @routes.route('/equipos', methods=['POST'])
 def agregar_equipo():
     data = request.get_json() or {}
 
     # Validación básica
-    campos_requeridos = ['codigo', 'nombre', 'marca', 'modelo', 'fecha_compra', 'periodo_mantenimiento', 'estado']
+    campos_requeridos = ['nombre', 'marca', 'modelo', 'fecha_compra', 'periodo_mantenimiento', 'estado']
     for campo in campos_requeridos:
-        if campo not in data:
-            return jsonify({"error": f"Falta el campo requerido: {campo}"}), 400
+        if not data.get(campo):  # ahora también valida vacíos
+            return jsonify({"error": f"Falta el campo requerido o está vacío: {campo}"}), 400
 
+    # Validar fecha
     try:
         fecha_compra = datetime.strptime(data['fecha_compra'], "%Y-%m-%d").date()
     except Exception:
         return jsonify({"error": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
+    # 🧮 Generar código automáticamente (siguiente número disponible)
+    ultimo_equipo = Equipo.query.order_by(Equipo.id.desc()).first()
+    nuevo_codigo = str(int(ultimo_equipo.codigo) + 1) if ultimo_equipo and ultimo_equipo.codigo.isdigit() else "1"
+
+    # 🧭 Calcular próximo mantenimiento
+    periodo = data['periodo_mantenimiento'].lower()
+    proximo_mantenimiento = None
+    if "proximo_mantenimiento" in data and data.get("proximo_mantenimiento"):
+        try:
+            proximo_mantenimiento = datetime.strptime(data["proximo_mantenimiento"], "%Y-%m-%d").date()
+        except Exception:
+        # si el frontend envía algo inválido, lo ignoramos (no abortamos)
+            proximo_mantenimiento = None
+
     nuevo_equipo = Equipo(
-        codigo=data['codigo'],
-        nombre=data['nombre'],
-        marca=data['marca'],
-        modelo=data['modelo'],
-        fecha_compra=fecha_compra,
-        periodo_mantenimiento=data['periodo_mantenimiento'],
-        estado=data['estado'],
-        imagen_url=data.get('imagen_url')  # puede venir vacío o no enviado
-    )
+    codigo=data['codigo'],
+    nombre=data['nombre'],
+    marca=data['marca'],
+    modelo=data['modelo'],
+    fecha_compra=fecha_compra,
+    periodo_mantenimiento=data['periodo_mantenimiento'],
+    estado=data['estado'],
+    imagen_url=data.get('imagen_url'),
+    proximo_mantenimiento=proximo_mantenimiento,
+    ultimo_mantenimiento=fecha_compra  # Asumimos que el último mantenimiento es la fecha de compra inicialmente
+)
 
     db.session.add(nuevo_equipo)
     db.session.commit()
 
-    return jsonify({"mensaje": "✅ Equipo agregado correctamente"}), 201
+    return jsonify({"mensaje": "✅ Equipo agregado correctamente", "codigo": nuevo_equipo.codigo}), 201
+
 
 
 # Editar equipo existente
@@ -67,8 +88,15 @@ def editar_equipo(id):
         equipo.periodo_mantenimiento = data["periodo_mantenimiento"]
     if "estado" in data:
         equipo.estado = data["estado"]
-    if "imagen_url" in data:  # ✅ permite actualizar imagen
+    if "imagen_url" in data:  
         equipo.imagen_url = data["imagen_url"]
+    try:
+        from dateutil.relativedelta import relativedelta
+        if equipo.fecha_compra and equipo.periodo_mantenimiento:
+            meses = int(equipo.periodo_mantenimiento)
+            equipo.proximo_mantenimiento = equipo.fecha_compra + relativedelta(months=meses)
+    except ValueError:
+        equipo.proximo_mantenimiento = None
 
     db.session.commit()
     return jsonify({"mensaje": "✅ Equipo actualizado correctamente"})
@@ -103,10 +131,12 @@ def detalle_equipo(id):
         "nombre": e.nombre,
         "marca": e.marca,
         "modelo": e.modelo,
-        "fecha_compra": str(e.fecha_compra),
+        "fecha_compra": str(e.fecha_compra) if e.fecha_compra else None,
         "periodo_mantenimiento": e.periodo_mantenimiento,
         "estado": e.estado,
-        "imagen_url": e.imagen_url  # ✅ ahora incluido correctamente
+        "imagen_url": e.imagen_url,
+        "proximo_mantenimiento": str(e.proximo_mantenimiento) if e.proximo_mantenimiento else None,
+        "ultimo_mantenimiento": str(e.ultimo_mantenimiento) if e.ultimo_mantenimiento else None
     })
 
 
@@ -125,7 +155,9 @@ def obtener_equipos():
             "fecha_compra": str(e.fecha_compra),
             "periodo_mantenimiento": e.periodo_mantenimiento,
             "estado": e.estado,
-            "imagen_url": e.imagen_url
+            "imagen_url": e.imagen_url,
+            "proximo_mantenimiento": str(e.proximo_mantenimiento) if e.proximo_mantenimiento else None,
+            "ultimo_mantenimiento": str(e.ultimo_mantenimiento) if e.ultimo_mantenimiento else None
         })
     return jsonify(resultado)
 
@@ -164,6 +196,12 @@ def agregar_mantenimiento():
     )
 
     db.session.add(nuevo)
+    equipo.ultimo_mantenimiento = nuevo.fecha 
+    try:
+        meses = int(equipo.periodo_mantenimiento)
+        equipo.proximo_mantenimiento = nuevo.fecha + relativedelta(months=meses)
+    except ValueError:
+        equipo.proximo_mantenimiento = None
     db.session.commit()
 
     return jsonify({"mensaje": "✅ Mantenimiento registrado correctamente", "id": nuevo.id}), 201

@@ -12,6 +12,9 @@ class Equipo(db.Model):
     periodo_mantenimiento = db.Column(db.String(50))
     imagen_url = db.Column(db.String(255))
     estado = db.Column(db.String(50))
+    proximo_mantenimiento = db.Column(db.Date)
+    ultimo_mantenimiento = db.Column(db.Date)
+
 
     def __repr__(self):
         return f'<Equipo {self.nombre}>'
