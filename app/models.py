@@ -9,12 +9,11 @@ class Equipo(db.Model):
     marca = db.Column(db.String(50))
     modelo = db.Column(db.String(50))
     fecha_compra = db.Column(db.Date)
-    periodo_mantenimiento = db.Column(db.String(50))
+    periodo_mantenimiento = db.Column(db.Integer)  # se cambia a entero
     imagen_url = db.Column(db.String(255))
     estado = db.Column(db.String(50))
     proximo_mantenimiento = db.Column(db.Date)
     ultimo_mantenimiento = db.Column(db.Date)
-
 
     def __repr__(self):
         return f'<Equipo {self.nombre}>'

@@ -163,30 +163,36 @@ def obtener_equipos():
 
 
 # ============================================================
-# 🟣 MANTENIMIENTOS
+# 🟣 MANTENIMIENTOS (versión final mejorada)
 # ============================================================
+from datetime import date, datetime
+from dateutil.relativedelta import relativedelta
 
-# Crear mantenimiento
+# ============================================================
+# ➕ Agregar mantenimiento (recalcula fechas del equipo)
+# ============================================================
 @routes.route('/mantenimientos', methods=['POST'])
 def agregar_mantenimiento():
     data = request.get_json() or {}
 
+    # 🔹 Validar campos requeridos
     required = ['equipo_id', 'tipo', 'fecha']
     for key in required:
         if key not in data:
             return jsonify({"error": f"Falta campo requerido: {key}"}), 400
 
-    # Verificar que el equipo exista
+    # 🔹 Verificar que el equipo exista
     equipo = Equipo.query.get(data['equipo_id'])
     if not equipo:
         return jsonify({"error": "Equipo no encontrado"}), 404
 
-    # Validar fecha
+    # 🔹 Validar formato de fecha
     try:
         fecha_obj = datetime.strptime(data['fecha'], "%Y-%m-%d").date()
     except Exception:
         return jsonify({"error": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
+    # 🔹 Crear mantenimiento
     nuevo = Mantenimiento(
         tipo=data.get('tipo'),
         fecha=fecha_obj,
@@ -196,18 +202,45 @@ def agregar_mantenimiento():
     )
 
     db.session.add(nuevo)
-    equipo.ultimo_mantenimiento = nuevo.fecha 
-    try:
-        meses = int(equipo.periodo_mantenimiento)
-        equipo.proximo_mantenimiento = nuevo.fecha + relativedelta(months=meses)
-    except ValueError:
-        equipo.proximo_mantenimiento = None
-    db.session.commit()
+    db.session.commit()  # Guardar primero el mantenimiento
 
+    # 🔁 Recalcular las fechas del equipo según TODOS los mantenimientos
+    mantenimientos = Mantenimiento.query.filter_by(equipo_id=equipo.id).all()
+    today = datetime.now().date()
+    pasados, futuros = [], []
+
+    for m in mantenimientos:
+        if isinstance(m.fecha, str):
+            try:
+                f = datetime.strptime(m.fecha, "%Y-%m-%d").date()
+            except Exception:
+                continue
+        else:
+            f = m.fecha
+
+        if f <= today:
+            pasados.append(f)
+        else:
+            futuros.append(f)
+
+    equipo.ultimo_mantenimiento = max(pasados) if pasados else None
+    equipo.proximo_mantenimiento = min(futuros) if futuros else None
+
+    # Si no hay futuros → estimar siguiente preventivo desde el último
+    if equipo.proximo_mantenimiento is None and equipo.ultimo_mantenimiento and equipo.periodo_mantenimiento:
+        try:
+            meses = int(equipo.periodo_mantenimiento)
+            equipo.proximo_mantenimiento = equipo.ultimo_mantenimiento + relativedelta(months=meses)
+        except Exception:
+            pass
+
+    db.session.commit()
     return jsonify({"mensaje": "✅ Mantenimiento registrado correctamente", "id": nuevo.id}), 201
 
 
-# Listar mantenimientos (con opción de filtrar por equipo)
+# ============================================================
+# 📋 Listar mantenimientos (con opción de filtrar por equipo)
+# ============================================================
 @routes.route('/mantenimientos', methods=['GET'])
 def listar_mantenimientos():
     equipo_id = request.args.get('equipo_id')
@@ -232,7 +265,9 @@ def listar_mantenimientos():
     return jsonify(resultado)
 
 
-# Detalle de mantenimiento
+# ============================================================
+# 🔍 Detalle de mantenimiento
+# ============================================================
 @routes.route('/mantenimientos/<int:id>', methods=['GET'])
 def detalle_mantenimiento(id):
     m = Mantenimiento.query.get(id)
@@ -250,42 +285,95 @@ def detalle_mantenimiento(id):
     })
 
 
-# Editar mantenimiento
+# ============================================================
+# ✏️ Editar mantenimiento (recalcula lógica del equipo)
+# ============================================================
 @routes.route('/mantenimientos/<int:id>', methods=['PUT'])
 def editar_mantenimiento(id):
     data = request.get_json() or {}
     mantenimiento = Mantenimiento.query.get(id)
+
     if not mantenimiento:
         return jsonify({"error": "Mantenimiento no encontrado"}), 404
 
+    equipo = mantenimiento.equipo
+
+    # Actualizar campos
     if "tipo" in data:
         mantenimiento.tipo = data["tipo"]
+
     if "fecha" in data:
         try:
             mantenimiento.fecha = datetime.strptime(data["fecha"], "%Y-%m-%d").date()
         except Exception:
             return jsonify({"error": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
+
     if "agente" in data:
         mantenimiento.agente = data["agente"]
+
     if "descripcion" in data:
         mantenimiento.descripcion = data["descripcion"]
-    if "equipo_id" in data:
-        equipo = Equipo.query.get(data["equipo_id"])
-        if not equipo:
-            return jsonify({"error": "Equipo no encontrado"}), 404
-        mantenimiento.equipo_id = data["equipo_id"]
+
+    if "equipo_id" in data and data["equipo_id"] != mantenimiento.equipo_id:
+        nuevo_equipo = Equipo.query.get(data["equipo_id"])
+        if not nuevo_equipo:
+            return jsonify({"error": "Nuevo equipo no encontrado"}), 404
+        mantenimiento.equipo_id = nuevo_equipo.id
+        equipo = nuevo_equipo
 
     db.session.commit()
-    return jsonify({"mensaje": "✅ Mantenimiento actualizado correctamente"})
+
+    # 🔁 Recalcular lógica general
+    mantenimientos = Mantenimiento.query.filter_by(equipo_id=equipo.id).all()
+    today = datetime.now().date()
+    pasados, futuros = [], []
+
+    for m in mantenimientos:
+        f = m.fecha if not isinstance(m.fecha, str) else datetime.strptime(m.fecha, "%Y-%m-%d").date()
+        if f <= today:
+            pasados.append(f)
+        else:
+            futuros.append(f)
+
+    equipo.ultimo_mantenimiento = max(pasados) if pasados else None
+    equipo.proximo_mantenimiento = min(futuros) if futuros else None
+
+    db.session.commit()
+    return jsonify({"mensaje": "✅ Mantenimiento actualizado y sincronizado"}), 200
 
 
-# Eliminar mantenimiento
+# ============================================================
+# 🗑️ Eliminar mantenimiento (recalcula fechas del equipo)
+# ============================================================
 @routes.route('/mantenimientos/<int:id>', methods=['DELETE'])
 def eliminar_mantenimiento(id):
     m = Mantenimiento.query.get(id)
     if not m:
         return jsonify({"error": "Mantenimiento no encontrado"}), 404
 
+    equipo = m.equipo
     db.session.delete(m)
     db.session.commit()
-    return jsonify({"mensaje": "🗑️ Mantenimiento eliminado correctamente"}), 200
+
+    # 🔁 Recalcular fechas restantes
+    restantes = Mantenimiento.query.filter_by(equipo_id=equipo.id).all()
+    if restantes:
+        today = datetime.now().date()
+        pasados, futuros = [], []
+
+        for r in restantes:
+            f = r.fecha if not isinstance(r.fecha, str) else datetime.strptime(r.fecha, "%Y-%m-%d").date()
+            if f <= today:
+                pasados.append(f)
+            else:
+                futuros.append(f)
+
+        equipo.ultimo_mantenimiento = max(pasados) if pasados else None
+        equipo.proximo_mantenimiento = min(futuros) if futuros else None
+    else:
+        equipo.ultimo_mantenimiento = None
+        equipo.proximo_mantenimiento = None
+
+    db.session.commit()
+    return jsonify({"mensaje": "🗑️ Mantenimiento eliminado y equipo actualizado"}), 200
+
