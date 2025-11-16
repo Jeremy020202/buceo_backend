@@ -2,7 +2,8 @@ from flask import Blueprint, request, jsonify
 from app.database import db
 from app.models import Equipo, Mantenimiento
 from datetime import datetime
-from dateutil.relativedelta import relativedelta 
+from dateutil.relativedelta import relativedelta
+from sqlalchemy import func 
 
 
 routes = Blueprint('routes', __name__)
@@ -377,3 +378,77 @@ def eliminar_mantenimiento(id):
     db.session.commit()
     return jsonify({"mensaje": "🗑️ Mantenimiento eliminado y equipo actualizado"}), 200
 
+# ============================
+# 📊 ENDPOINTS PARA DASHBOARD
+# ============================
+
+
+
+# Total de equipos, activos y en mantenimiento
+@routes.route('/dashboard/equipos-resumen', methods=['GET'])
+def dashboard_equipos_resumen():
+    total = Equipo.query.count()
+    activos = Equipo.query.filter_by(estado="Activo").count()
+    inactivos = Equipo.query.filter_by(estado="Inactivo").count()
+    equipos_en_mantenimiento = Equipo.query.filter(
+        Equipo.estado.ilike("en mantenimiento")
+    ).count()
+
+
+
+    return jsonify({
+        "total": total,
+        "activos": activos,
+        "inactivos": inactivos,
+        "equipos_en_mantenimiento": equipos_en_mantenimiento
+
+    }), 200
+
+
+@routes.route('/dashboard/mantenimientos-resumen', methods=['GET'])
+def dashboard_mantenimientos_resumen():
+    total = db.session.query(Mantenimiento).count()
+
+    este_mes = db.session.query(Mantenimiento).filter(
+        db.extract('month', Mantenimiento.fecha) == datetime.now().month,
+        db.extract('year', Mantenimiento.fecha) == datetime.now().year
+    ).count()
+
+    atrasados = db.session.query(Mantenimiento).filter(
+        Mantenimiento.fecha < datetime.now().date()
+    ).count()
+
+    return jsonify({
+        "total": total,
+        "este_mes": este_mes,
+        "atrasados": atrasados
+    }), 200
+
+@routes.route('/dashboard/equipos-sin-mantenimiento', methods=['GET'])
+def equipos_sin_mantenimiento():
+    equipos = Equipo.query.outerjoin(Mantenimiento).filter(
+        Mantenimiento.id == None
+    ).all()
+
+    resultado = [
+        {"id": e.id, "nombre": e.nombre, "codigo": e.codigo}
+        for e in equipos
+    ]
+
+    return jsonify(resultado), 200
+
+from sqlalchemy import func
+
+@routes.route('/dashboard/mantenimientos-historial', methods=['GET'])
+def dashboard_mantenimientos_historial():
+    data = db.session.query(
+        func.to_char(Mantenimiento.fecha, 'YYYY-MM').label("mes"),
+        func.count(Mantenimiento.id)
+    ).group_by("mes").order_by("mes").all()
+
+    historial = [
+        {"mes": fila[0], "cantidad": fila[1]}
+        for fila in data
+    ]
+
+    return jsonify(historial), 200
