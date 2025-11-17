@@ -452,3 +452,26 @@ def dashboard_mantenimientos_historial():
     ]
 
     return jsonify(historial), 200
+
+@routes.route('/dashboard/proximos-mantenimientos', methods=['GET'])
+def dashboard_proximos_mantenimientos():
+ 
+    hoy = datetime.now().date()
+    proximos = (
+        Mantenimiento.query
+        .filter(Mantenimiento.fecha != None, Mantenimiento.fecha >= hoy)
+        .order_by(Mantenimiento.fecha.asc())
+        .limit(5)
+        .all()
+    )
+
+    resultado = [{
+        "id": m.equipo.id,                       
+        "nombre": m.equipo.nombre,              
+        "tipo": m.tipo,                         
+        "proximo_mantenimiento": str(m.fecha)    
+    } for m in proximos]
+
+    return jsonify(resultado), 200
+
+
