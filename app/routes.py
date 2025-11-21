@@ -4,6 +4,11 @@ from app.models import Equipo, Mantenimiento
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func 
+#Imports nuevos para ver si se agregan imagenes de equipos
+import os
+import uuid
+from werkzeug.utils import secure_filename
+from flask import current_app
 
 
 routes = Blueprint('routes', __name__)
@@ -377,6 +382,38 @@ def eliminar_mantenimiento(id):
 
     db.session.commit()
     return jsonify({"mensaje": "🗑️ Mantenimiento eliminado y equipo actualizado"}), 200
+# ============================================================
+# 📤 SUBIR IMAGEN DE EQUIPO PRUEBA REVISAR BIEN NO SE SI ESTO FUNCIONA
+# ============================================================
+@routes.route("/upload-image", methods=["POST"])
+def upload_image():
+    if "imagen" not in request.files:
+        return jsonify({"error": "No se envió ningún archivo"}), 400
+
+    file = request.files["imagen"]
+
+    if file.filename == "":
+        return jsonify({"error": "Nombre de archivo vacío"}), 400
+
+    # Extensiones permitidas
+    ALLOWED = {"png", "jpg", "jpeg", "gif"}
+    extension = file.filename.rsplit(".", 1)[-1].lower()
+
+    if extension not in ALLOWED:
+        return jsonify({"error": "Formato no permitido"}), 400
+
+    # Crear nombre único
+    filename = f"{uuid.uuid4()}.{extension}"
+    filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], secure_filename(filename))
+
+    # Guardar archivo
+    file.save(filepath)
+
+    # URL pública para frontend
+    url = f"http://localhost:5000/uploads/{filename}"
+
+    return jsonify({"url": url}), 200
+
 
 # ============================
 # 📊 ENDPOINTS PARA DASHBOARD
