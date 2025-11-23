@@ -14,7 +14,7 @@ from flask import current_app
 routes = Blueprint('routes', __name__)
 
 # ============================================================
-# 🟢 EQUIPOS
+#  EQUIPOS
 # ============================================================
 
 from dateutil.relativedelta import relativedelta  #  para sumar meses fácilmente
@@ -35,18 +35,18 @@ def agregar_equipo():
     except Exception:
         return jsonify({"error": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
-    # 🧮 Generar código automáticamente (siguiente número disponible)
+    #  Generar código automáticamente 
     ultimo_equipo = Equipo.query.order_by(Equipo.id.desc()).first()
     nuevo_codigo = str(int(ultimo_equipo.codigo) + 1) if ultimo_equipo and ultimo_equipo.codigo.isdigit() else "1"
 
-    # 🧭 Calcular próximo mantenimiento
+    #  Calcular próximo mantenimiento
     periodo = data['periodo_mantenimiento'].lower()
     proximo_mantenimiento = None
     if "proximo_mantenimiento" in data and data.get("proximo_mantenimiento"):
         try:
             proximo_mantenimiento = datetime.strptime(data["proximo_mantenimiento"], "%Y-%m-%d").date()
         except Exception:
-        # si el frontend envía algo inválido, lo ignoramos (no abortamos)
+        # si el frontend envía algo inválido, lo ignoramos 
             proximo_mantenimiento = None
 
     nuevo_equipo = Equipo(
@@ -169,36 +169,36 @@ def obtener_equipos():
 
 
 # ============================================================
-# 🟣 MANTENIMIENTOS (versión final mejorada)
+#  MANTENIMIENTOS (versión final mejorada)
 # ============================================================
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 
 # ============================================================
-# ➕ Agregar mantenimiento (recalcula fechas del equipo)
+#  Agregar mantenimiento (recalcula fechas del equipo)
 # ============================================================
 @routes.route('/mantenimientos', methods=['POST'])
 def agregar_mantenimiento():
     data = request.get_json() or {}
 
-    # 🔹 Validar campos requeridos
+    #  Validar campos requeridos
     required = ['equipo_id', 'tipo', 'fecha']
     for key in required:
         if key not in data:
             return jsonify({"error": f"Falta campo requerido: {key}"}), 400
 
-    # 🔹 Verificar que el equipo exista
+    #  Verificar que el equipo exista
     equipo = Equipo.query.get(data['equipo_id'])
     if not equipo:
         return jsonify({"error": "Equipo no encontrado"}), 404
 
-    # 🔹 Validar formato de fecha
+    #  Validar formato de fecha
     try:
         fecha_obj = datetime.strptime(data['fecha'], "%Y-%m-%d").date()
     except Exception:
         return jsonify({"error": "Formato de fecha inválido (use YYYY-MM-DD)"}), 400
 
-    # 🔹 Crear mantenimiento
+    #  Crear mantenimiento
     nuevo = Mantenimiento(
         tipo=data.get('tipo'),
         fecha=fecha_obj,
@@ -210,7 +210,7 @@ def agregar_mantenimiento():
     db.session.add(nuevo)
     db.session.commit()  # Guardar primero el mantenimiento
 
-    # 🔁 Recalcular las fechas del equipo según TODOS los mantenimientos
+    #  Recalcular las fechas del equipo según TODOS los mantenimientos
     mantenimientos = Mantenimiento.query.filter_by(equipo_id=equipo.id).all()
     today = datetime.now().date()
     pasados, futuros = [], []
@@ -245,7 +245,7 @@ def agregar_mantenimiento():
 
 
 # ============================================================
-# 📋 Listar mantenimientos (con opción de filtrar por equipo)
+#  Listar mantenimientos 
 # ============================================================
 @routes.route('/mantenimientos', methods=['GET'])
 def listar_mantenimientos():
@@ -272,7 +272,7 @@ def listar_mantenimientos():
 
 
 # ============================================================
-# 🔍 Detalle de mantenimiento
+#  Detalle de mantenimiento
 # ============================================================
 @routes.route('/mantenimientos/<int:id>', methods=['GET'])
 def detalle_mantenimiento(id):
@@ -292,7 +292,7 @@ def detalle_mantenimiento(id):
 
 
 # ============================================================
-# ✏️ Editar mantenimiento (recalcula lógica del equipo)
+#  Editar mantenimiento 
 # ============================================================
 @routes.route('/mantenimientos/<int:id>', methods=['PUT'])
 def editar_mantenimiento(id):
@@ -329,7 +329,7 @@ def editar_mantenimiento(id):
 
     db.session.commit()
 
-    # 🔁 Recalcular lógica general
+    #  Recalcular lógica general
     mantenimientos = Mantenimiento.query.filter_by(equipo_id=equipo.id).all()
     today = datetime.now().date()
     pasados, futuros = [], []
@@ -349,7 +349,7 @@ def editar_mantenimiento(id):
 
 
 # ============================================================
-# 🗑️ Eliminar mantenimiento (recalcula fechas del equipo)
+#  Eliminar mantenimiento 
 # ============================================================
 @routes.route('/mantenimientos/<int:id>', methods=['DELETE'])
 def eliminar_mantenimiento(id):
@@ -361,7 +361,7 @@ def eliminar_mantenimiento(id):
     db.session.delete(m)
     db.session.commit()
 
-    # 🔁 Recalcular fechas restantes
+    #  Recalcular fechas restantes
     restantes = Mantenimiento.query.filter_by(equipo_id=equipo.id).all()
     if restantes:
         today = datetime.now().date()
@@ -383,7 +383,7 @@ def eliminar_mantenimiento(id):
     db.session.commit()
     return jsonify({"mensaje": "🗑️ Mantenimiento eliminado y equipo actualizado"}), 200
 # ============================================================
-# 📤 SUBIR IMAGEN DE EQUIPO PRUEBA REVISAR BIEN NO SE SI ESTO FUNCIONA
+#  SUBIR IMAGEN DE EQUIPO PRUEBA REVISAR BIEN NO SE SI ESTO FUNCIONA
 # ============================================================
 @routes.route("/upload-image", methods=["POST"])
 def upload_image():
@@ -416,7 +416,7 @@ def upload_image():
 
 
 # ============================
-# 📊 ENDPOINTS PARA DASHBOARD
+#  ENDPOINTS PARA DASHBOARD
 # ============================
 
 
